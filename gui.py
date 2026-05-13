@@ -1,0 +1,587 @@
+import sys
+import time
+import os
+
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+
+sys.path.append(str(ROOT_DIR))
+
+import customtkinter as ctk
+
+from tkinter import filedialog
+
+from threading import Thread
+
+from datetime import datetime
+
+from engine.scanner import (
+    AntivirusScanner
+)
+
+from engine.realtime import (
+    start_realtime_protection
+)
+
+from engine.process_monitor import (
+    monitor_processes
+)
+
+from engine.firewall import (
+    monitor_connections
+)
+
+from engine.logger import (
+    DB_PATH
+)
+
+scanner = AntivirusScanner()
+
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+
+app = ctk.CTk()
+
+app.title("ALVSafe Antivirus")
+
+app.geometry("1200x700")
+
+# ============================================
+# GRID
+# ============================================
+
+app.grid_columnconfigure(
+    1,
+    weight=1
+)
+
+app.grid_rowconfigure(
+    0,
+    weight=1
+)
+
+# ============================================
+# SIDEBAR
+# ============================================
+
+sidebar = ctk.CTkFrame(
+    app,
+    width=250,
+    corner_radius=0
+)
+
+sidebar.grid(
+    row=0,
+    column=0,
+    sticky="ns"
+)
+
+title = ctk.CTkLabel(
+    sidebar,
+    text="ALVSafe",
+    font=("Arial", 30, "bold")
+)
+
+title.pack(
+    pady=(40, 10)
+)
+
+subtitle = ctk.CTkLabel(
+    sidebar,
+    text="Advanced Protection",
+    font=("Arial", 14)
+)
+
+subtitle.pack(
+    pady=(0, 30)
+)
+
+# ============================================
+# MAIN FRAME
+# ============================================
+
+main_frame = ctk.CTkFrame(app)
+
+main_frame.grid(
+    row=0,
+    column=1,
+    sticky="nsew",
+    padx=20,
+    pady=20
+)
+
+# ============================================
+# STATUS
+# ============================================
+
+status_label = ctk.CTkLabel(
+    main_frame,
+    text="🟢 Protegido",
+    font=("Arial", 28, "bold")
+)
+
+status_label.pack(
+    pady=20
+)
+
+# ============================================
+# INFO FRAME
+# ============================================
+
+info_frame = ctk.CTkFrame(
+    main_frame
+)
+
+info_frame.pack(
+    fill="x",
+    padx=20,
+    pady=10
+)
+
+files_label = ctk.CTkLabel(
+    info_frame,
+    text="Arquivos Escaneados: 0",
+    font=("Arial", 16)
+)
+
+files_label.pack(
+    anchor="w",
+    padx=20,
+    pady=10
+)
+
+threats_label = ctk.CTkLabel(
+    info_frame,
+    text="Ameaças Detectadas: 0",
+    font=("Arial", 16)
+)
+
+threats_label.pack(
+    anchor="w",
+    padx=20,
+    pady=10
+)
+
+last_scan_label = ctk.CTkLabel(
+    info_frame,
+    text="Último Scan: Nunca",
+    font=("Arial", 16)
+)
+
+last_scan_label.pack(
+    anchor="w",
+    padx=20,
+    pady=10
+)
+
+# ============================================
+# PROGRESS BAR
+# ============================================
+
+progress = ctk.CTkProgressBar(
+    main_frame,
+    width=700
+)
+
+progress.pack(
+    pady=20
+)
+
+progress.set(0)
+
+# ============================================
+# LOG BOX
+# ============================================
+
+log_box = ctk.CTkTextbox(
+    main_frame,
+    width=850,
+    height=350,
+    font=("Consolas", 13)
+)
+
+log_box.pack(
+    padx=20,
+    pady=20,
+    fill="both",
+    expand=True
+)
+
+# ============================================
+# LOG FUNCTION
+# ============================================
+
+def log(message):
+
+    current_time = datetime.now().strftime(
+        "%H:%M:%S"
+    )
+
+    log_box.insert(
+        "end",
+        f"[{current_time}] {message}\n"
+    )
+
+    log_box.see("end")
+
+# ============================================
+# UPDATE STATS
+# ============================================
+
+def update_stats():
+
+    files_label.configure(
+        text=(
+            "Arquivos Escaneados: "
+            f"{scanner.scanned}"
+        )
+    )
+
+    threats_label.configure(
+        text=(
+            "Ameaças Detectadas: "
+            f"{len(scanner.infected)}"
+        )
+    )
+
+# ============================================
+# SCAN FUNCTION
+# ============================================
+
+def run_scan(folder):
+
+    status_label.configure(
+        text="🟡 Escaneando..."
+    )
+
+    progress.set(0)
+
+    log(
+        f"Escaneando: {folder}"
+    )
+
+    scanner.scan_directory(
+        folder
+    )
+
+    progress.set(1)
+
+    update_stats()
+
+    last_scan_label.configure(
+        text=(
+            "Último Scan: "
+            f"{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+        )
+    )
+
+    log("Scan finalizado")
+
+    status_label.configure(
+        text="🟢 Protegido"
+    )
+
+# ============================================
+# SELECT FOLDER
+# ============================================
+
+def choose_folder():
+
+    folder = filedialog.askdirectory()
+
+    if folder:
+
+        Thread(
+            target=run_scan,
+            args=(folder,),
+            daemon=True
+        ).start()
+
+# ============================================
+# POPUP WINDOW
+# ============================================
+
+def create_popup(
+    title,
+    content
+):
+
+    popup = ctk.CTkToplevel(app)
+
+    popup.title(title)
+
+    popup.geometry("500x400")
+
+    popup.grab_set()
+
+    label = ctk.CTkLabel(
+        popup,
+        text=title,
+        font=("Arial", 24, "bold")
+    )
+
+    label.pack(
+        pady=20
+    )
+
+    textbox = ctk.CTkTextbox(
+        popup,
+        width=420,
+        height=250
+    )
+
+    textbox.pack(
+        padx=20,
+        pady=20,
+        fill="both",
+        expand=True
+    )
+
+    textbox.insert(
+        "0.0",
+        content
+    )
+
+    textbox.configure(
+        state="disabled"
+    )
+
+# ============================================
+# PROTECTION STATUS
+# ============================================
+
+def protection_status():
+
+    realtime_status = (
+        "🟢 Proteção em tempo real ativa\n\n"
+        "🟢 Monitoramento de processos ativo\n\n"
+        "🟢 Firewall monitorando\n\n"
+        "🟢 Engine heurística ativa\n\n"
+        "🟢 YARA ativo\n"
+    )
+
+    create_popup(
+        "Proteção Ativa",
+        realtime_status
+    )
+
+# ============================================
+# QUARANTINE
+# ============================================
+
+def open_quarantine():
+
+    quarantine_path = (
+        ROOT_DIR / "quarantine"
+    )
+
+    quarantine_path.mkdir(
+        exist_ok=True
+    )
+
+    files = list(
+        quarantine_path.glob("*")
+    )
+
+    if not files:
+
+        content = (
+            "Nenhum arquivo "
+            "em quarentena"
+        )
+
+    else:
+
+        content = "\n".join(
+            f.name for f in files
+        )
+
+    create_popup(
+        "Quarentena",
+        content
+    )
+
+# ============================================
+# SETTINGS
+# ============================================
+
+def open_settings():
+
+    settings_text = (
+        "ALVSafe Settings\n\n"
+        "✅ Proteção em tempo real\n"
+        "✅ Detecção heurística\n"
+        "✅ YARA\n"
+        "✅ Firewall monitor\n"
+        "✅ Quarentena automática\n"
+        "✅ Monitoramento de processos\n"
+    )
+
+    create_popup(
+        "Configurações",
+        settings_text
+    )
+
+# ============================================
+# LOGS
+# ============================================
+
+def open_logs():
+
+    try:
+
+        os.startfile(
+            str(DB_PATH)
+        )
+
+    except Exception as e:
+
+        create_popup(
+            "Erro",
+            str(e)
+        )
+
+# ============================================
+# REALTIME THREAD
+# ============================================
+
+def realtime_worker():
+
+    log(
+        "Proteção em tempo real iniciada"
+    )
+
+    start_realtime_protection()
+
+# ============================================
+# PROCESS MONITOR THREAD
+# ============================================
+
+def process_worker():
+
+    while True:
+
+        monitor_processes()
+
+        time.sleep(5)
+
+# ============================================
+# FIREWALL THREAD
+# ============================================
+
+def firewall_worker():
+
+    while True:
+
+        monitor_connections()
+
+        time.sleep(5)
+
+# ============================================
+# BUTTONS
+# ============================================
+
+scan_button = ctk.CTkButton(
+    sidebar,
+    text="🔍 Escanear Pasta",
+    command=choose_folder,
+    width=200,
+    height=50,
+    font=("Arial", 16, "bold")
+)
+
+scan_button.pack(
+    pady=20
+)
+
+protection_button = ctk.CTkButton(
+    sidebar,
+    text="🛡 Proteção Ativa",
+    command=protection_status,
+    width=200,
+    height=50,
+    font=("Arial", 16, "bold")
+)
+
+protection_button.pack(
+    pady=20
+)
+
+quarantine_button = ctk.CTkButton(
+    sidebar,
+    text="☣ Quarentena",
+    command=open_quarantine,
+    width=200,
+    height=50,
+    font=("Arial", 16, "bold")
+)
+
+quarantine_button.pack(
+    pady=20
+)
+
+settings_button = ctk.CTkButton(
+    sidebar,
+    text="⚙ Configurações",
+    command=open_settings,
+    width=200,
+    height=50,
+    font=("Arial", 16, "bold")
+)
+
+settings_button.pack(
+    pady=20
+)
+
+logs_button = ctk.CTkButton(
+    sidebar,
+    text="📄 Logs",
+    command=open_logs,
+    width=200,
+    height=50,
+    font=("Arial", 16, "bold")
+)
+
+logs_button.pack(
+    pady=20
+)
+
+# ============================================
+# START THREADS
+# ============================================
+
+Thread(
+    target=realtime_worker,
+    daemon=True
+).start()
+
+Thread(
+    target=process_worker,
+    daemon=True
+).start()
+
+Thread(
+    target=firewall_worker,
+    daemon=True
+).start()
+
+# ============================================
+# INITIAL LOGS
+# ============================================
+
+log("ALVSafe iniciado")
+
+log(
+    "Engine heurística carregada"
+)
+
+log(
+    "Monitoramento ativo"
+)
+
+# ============================================
+# MAIN LOOP
+# ============================================
+
+app.mainloop()

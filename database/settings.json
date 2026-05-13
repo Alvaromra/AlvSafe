@@ -1,0 +1,6 @@
+{
+    "realtime_protection": true,
+    "heuristic_detection": true,
+    "yara_detection": true,
+    "quarantine_enabled": true
+}

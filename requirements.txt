@@ -1,0 +1,12 @@
+watchdog
+psutil
+rich
+customtkinter
+flask
+requests
+yara-python
+plyer
+matplotlib
+plotly
+pillow
+pyinstaller
