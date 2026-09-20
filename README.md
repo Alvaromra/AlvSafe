@@ -6,8 +6,8 @@ Projeto educacional e de pesquisa em segurança defensiva. Não substitui um ant
 
 | Sistema | CLI | Interface gráfica |
 |---|---|---|
-| Linux | ✅ | em reformulação |
-| macOS | ✅ | em reformulação |
+| Linux | ✅ | ✅ |
+| macOS | ✅ | ✅ |
 | Windows | planejado | planejado |
 
 ## O que ele faz
@@ -105,12 +105,22 @@ A variável `ALVSAFE_HOME` redireciona tudo para outra pasta. Hashes extras vão
 
 ## Interface gráfica
 
-A interface atual (`gui/`) é a versão anterior adaptada ao novo núcleo e está sendo reescrita. Para testá-la no Linux:
-
 ```bash
 pip install -e ".[yara,gui]"
-python -m gui.gui
+alvsafe-gui
 ```
+
+No macOS, o Tkinter não vem com o Python do Homebrew:
+
+```bash
+brew install python-tk@3.13
+```
+
+A janela tem abas de atividade, quarentena (com restaurar e apagar), logs, diagnóstico e configurações, além de um interruptor para a proteção em tempo real. Opções: `--scan PASTA` já abre escaneando, `--no-notify` desliga as notificações e `--theme dark|light|system` escolhe o tema.
+
+Ela usa o mesmo núcleo da CLI. Como o Tkinter só aceita mudanças de tela na thread principal, o scanner e o monitor rodam em threads e se comunicam com a janela por uma fila, lida a cada 200 ms.
+
+Não há ícone na bandeja. O `pystray` exige a thread principal no macOS, a mesma que o Tkinter ocupa, e os dois não coexistem. Como as notificações do sistema já cobrem o aviso em segundo plano, preferi não ter uma funcionalidade que só funcionaria no Linux. Para deixar a proteção rodando sem janela, use `alvsafe watch --notify`, que na parte 6 vira serviço.
 
 ## Desenvolvimento
 
@@ -130,14 +140,13 @@ alvsafe/
 ├── system.py       diferenças entre sistemas (notificações, pastas padrão)
 ├── events.py       barramento de eventos entre núcleo e interfaces
 ├── core/           scanner, quarentena, tempo real, monitores, log
+├── gui/            interface gráfica (controller.py faz a ponte com o núcleo)
 └── data/           assinaturas e regras YARA do pacote
-gui/                interface gráfica (em reformulação)
 tests/
 ```
 
 ## Roadmap
 
-- Interface gráfica reescrita sobre o núcleo, com bandeja e notificações no macOS e no Linux
 - Serviço em segundo plano (systemd e LaunchAgent) e CI em Linux e macOS
 - Suporte a Windows
 

@@ -18,11 +18,12 @@ dependencies = [
 
 [project.optional-dependencies]
 yara = ["yara-python>=4.3"]
-gui = ["customtkinter", "pystray", "pillow", "matplotlib"]
+gui = ["customtkinter>=5.2"]
 dev = ["pytest>=8"]
 
 [project.scripts]
 alvsafe = "alvsafe.cli:main"
+alvsafe-gui = "alvsafe.gui.app:main"
 
 [tool.setuptools.packages.find]
 include = ["alvsafe*"]
