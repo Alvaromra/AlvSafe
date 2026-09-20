@@ -27,7 +27,8 @@ class Settings:
     heuristic_detection: bool = True
     yara_detection: bool = True
     quarantine_enabled: bool = True
-    virustotal: bool = False
+    virustotal: bool = False            # exige a variável de ambiente VT_API_KEY
+    virustotal_min_detections: int = 3
     threat_threshold: int = 60
     scan_workers: int = 0  # 0 = automático
 

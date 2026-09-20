@@ -46,6 +46,15 @@ def test_fluxo_quarentena(tmp_path, capsys):
     assert main(["quarantine", "delete", "inexistente"]) == 2
 
 
+def test_hash(tmp_path, capsys):
+    alvo = tmp_path / "a.sh"
+    alvo.write_text("echo oi")
+    assert main(["hash", "-q", str(alvo)]) == 0
+    saida = capsys.readouterr().out.strip()
+    assert saida.startswith(hashlib.sha256(b"echo oi").hexdigest())
+    assert main(["hash", str(tmp_path / "nao-existe")]) == 2
+
+
 def test_logs(capsys):
     from alvsafe.core.eventlog import log_event
     log_event("TESTE", "algo")

@@ -12,12 +12,47 @@ Projeto educacional e de pesquisa em segurança defensiva. Não substitui um ant
 
 ## O que ele faz
 
-- **Scan sob demanda** de arquivos e pastas, combinando hash conhecido, heurística por palavras-chave, regras YARA e entropia numa pontuação de ameaça.
+- **Scan sob demanda** de arquivos e pastas, combinando hash SHA-256 conhecido, heurística, regras YARA, entropia e (opcionalmente) VirusTotal numa pontuação de ameaça.
 - **Proteção em tempo real** nas pastas monitoradas (por padrão Downloads, Desktop e Documents), com debounce para não escanear arquivos pela metade.
 - **Detecção de comportamento de ransomware**: rajadas de escrita e arquivos criados ou renomeados com extensões como `.locked` e `.encrypted`.
 - **Quarentena neutralizada**: o arquivo é embaralhado, perde a permissão de execução e pode ser restaurado com verificação de integridade.
 - **Monitores de processos e conexões** que apenas alertam; o AlvSafe nunca encerra processos por conta própria.
 - **Diagnóstico** do ambiente com `alvsafe doctor`.
+
+## Como a detecção pontua
+
+Cada indicador vale pontos conforme a confiança que merece. A soma decide: 30 é suspeito, 60 põe em quarentena, 100 é malware.
+
+| Indicador | Pontos |
+|---|---|
+| Hash SHA-256 conhecido, EICAR, VirusTotal acima do limite | 100 |
+| Extensão de ransomware | 70 |
+| Regra YARA, APIs de injeção em processo | 60 |
+| Palavra-chave forte (`powershell -enc`, `Invoke-Expression`, `mimikatz`) | 40, mais 20 por palavra extra |
+| Entropia alta | 20 |
+| Indício fraco (`curl`, `base64`, `wget`), teto de 20 | 10 cada |
+| Execução em pasta temporária | 10 |
+
+Dois cuidados evitam falso positivo: a heurística por palavras-chave **só roda em arquivos de texto**, porque procurar `curl` dentro de um `.exe` acusa qualquer instalador legítimo, e nenhum indicador fraco sozinho chega aos 60.
+
+### Suas próprias assinaturas
+
+```bash
+alvsafe hash arquivo-suspeito.exe >> "$(alvsafe config path | xargs dirname)/malware_hashes.txt"
+```
+
+O arquivo aceita um SHA-256 por linha, com comentários após `#`. MD5 e SHA-1 são ignorados, e o `alvsafe doctor` avisa quando encontra algum.
+
+### VirusTotal (opcional)
+
+Desligado por padrão. Para ativar, exporte a chave e mude a configuração:
+
+```bash
+export VT_API_KEY="sua-chave"
+alvsafe config init      # depois troque "virustotal" para true
+```
+
+Só o hash do arquivo é enviado, nunca o conteúdo, e só para arquivos que já pontuaram pelo menos 30, para não gastar a cota da API gratuita.
 
 ## Instalação
 
@@ -48,6 +83,7 @@ alvsafe quarantine list
 alvsafe quarantine restore <ID> [--to DESTINO]
 alvsafe quarantine delete <ID>
 
+alvsafe hash arquivo.exe                 # SHA-256 no formato do banco de assinaturas
 alvsafe logs -n 50
 alvsafe config init                      # cria settings.json com os padrões
 alvsafe config show
@@ -101,7 +137,6 @@ tests/
 
 ## Roadmap
 
-- Detecção: banco de hashes SHA-256 e heurística restrita a scripts, com pontuação recalibrada
 - Interface gráfica reescrita sobre o núcleo, com bandeja e notificações no macOS e no Linux
 - Serviço em segundo plano (systemd e LaunchAgent) e CI em Linux e macOS
 - Suporte a Windows

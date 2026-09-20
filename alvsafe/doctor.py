@@ -1,5 +1,6 @@
 """Diagnóstico do ambiente: o que funciona e o que precisa de ajuste."""
 
+import os
 import sys
 import tempfile
 import threading
@@ -15,7 +16,7 @@ from alvsafe import __version__, paths, system
 from alvsafe.config import ConfigError, load_settings
 from alvsafe.core import yara_rules
 from alvsafe.core.realtime import check_folder
-from alvsafe.core.signatures import load_signatures
+from alvsafe.core.signatures import load_signature_set
 
 OK, WARN, FAIL = "ok", "aviso", "falha"
 
@@ -122,7 +123,22 @@ def _yara():
 
 
 def _signatures():
-    return Check("Assinaturas", OK, f"{len(load_signatures())} hashes carregados")
+    sigs = load_signature_set()
+    detail = f"{len(sigs)} hashes SHA-256"
+    if sigs.legacy or sigs.invalid:
+        detail += f", {sigs.legacy + sigs.invalid} linha(s) ignorada(s)"
+        return Check("Assinaturas", WARN, detail,
+                     "só SHA-256 é aceito; MD5 e SHA-1 do formato antigo são ignorados")
+    return Check("Assinaturas", OK, detail)
+
+
+def _virustotal(settings):
+    if not settings.virustotal:
+        return Check("VirusTotal", OK, "desativado na configuração")
+    if os.environ.get("VT_API_KEY"):
+        return Check("VirusTotal", OK, "ativado, chave presente")
+    return Check("VirusTotal", WARN, "ativado, mas sem chave",
+                 "exporte VT_API_KEY com a sua chave da API")
 
 
 def _network():
@@ -156,5 +172,5 @@ def run_checks(settings=None):
         settings = Settings()
     checks += [_backend(), _live_events()]
     checks += _watch_folders(settings)
-    checks += [_yara(), _signatures(), _network(), _notifications()]
+    checks += [_yara(), _signatures(), _virustotal(settings), _network(), _notifications()]
     return checks

@@ -20,18 +20,34 @@ from alvsafe.config import load_settings
 from alvsafe.core import heuristic, yara_rules
 from alvsafe.core.eventlog import log_event
 from alvsafe.core.quarantine import Quarantine
-from alvsafe.core.signatures import load_signatures
+from alvsafe.core.signatures import load_signature_set
 from alvsafe.core.threat_score import calculate_threat_score, classify_score
 from alvsafe.events import CRITICAL, DEBUG, INFO, WARNING
 from alvsafe.events import bus as default_bus
 
 HIGH_ENTROPY = 7.2
+VT_MIN_SCORE = 30  # abaixo disso não vale gastar a cota da API
 _TEMP_NAMES = {"tmp", "temp"}
 
 
+ENTROPY_SAMPLE = 1024 * 1024   # 1 MB por amostra
+ENTROPY_FULL_LIMIT = 4 * ENTROPY_SAMPLE
+
+
 def shannon_entropy(data):
+    """Entropia de Shannon em bits por byte (0 a 8).
+
+    Em arquivos grandes, calcula sobre três amostras (início, meio e fim)
+    em vez do arquivo inteiro: o resultado é praticamente o mesmo e evita
+    varrer dezenas de MB por arquivo.
+    """
     if not data:
         return 0.0
+    if len(data) > ENTROPY_FULL_LIMIT:
+        meio = len(data) // 2
+        data = (data[:ENTROPY_SAMPLE]
+                + data[meio:meio + ENTROPY_SAMPLE]
+                + data[-ENTROPY_SAMPLE:])
     total = len(data)
     return -sum((n / total) * math.log2(n / total) for n in Counter(data).values())
 
@@ -68,7 +84,8 @@ class Scanner:
     def __init__(self, settings=None, bus=None, signatures=None, quarantine=None, auto_quarantine=True):
         self.settings = settings or load_settings()
         self.bus = bus or default_bus
-        self.signatures = load_signatures() if signatures is None else set(signatures)
+        self.signatures = load_signature_set() if signatures is None else set(signatures)
+        self._vt_cache = {}
         self._quarantine = quarantine
         self.auto_quarantine = auto_quarantine
         self._cancel = threading.Event()
@@ -128,7 +145,7 @@ class Scanner:
         result.sha256 = hashlib.sha256(content).hexdigest()
 
         if result.sha256 in self.signatures:
-            indicators["yara_match"] = True
+            indicators["signature_match"] = True
             result.reasons.append("hash conhecido")
 
         entropy = shannon_entropy(content)
@@ -141,16 +158,29 @@ class Scanner:
             result.reasons.append("pasta temporária")
 
         if self.settings.heuristic_detection:
-            keywords = heuristic.find_keywords(content)
-            if keywords:
-                indicators["powershell_encoded"] = True
-                result.reasons.append("heurística: " + ", ".join(keywords))
+            found = heuristic.analyze(content)
+            if found.eicar:
+                indicators["eicar_test"] = True
+                result.reasons.append("arquivo de teste EICAR")
+            if found.strong:
+                indicators["heuristic_strong"] = True
+                indicators["heuristic_strong_extra"] = len(found.strong) - 1
+                result.reasons.append("heurística: " + ", ".join(found.strong))
+            if found.weak:
+                indicators["heuristic_weak"] = len(found.weak)
+                result.reasons.append("indícios fracos: " + ", ".join(found.weak))
 
         if self.settings.yara_detection:
             rules = yara_rules.match(content)
             if rules:
                 indicators["yara_match"] = True
                 result.reasons.append("YARA: " + ", ".join(rules))
+
+        if self._virustotal_needed(indicators, result):
+            detections = self._virustotal(path, result.sha256)
+            if detections is not None and detections >= self.settings.virustotal_min_detections:
+                indicators["vt_malicious"] = True
+                result.reasons.append(f"VirusTotal: {detections} detecções")
 
         result.score = calculate_threat_score(indicators)
         result.classification = classify_score(result.score)
@@ -165,6 +195,27 @@ class Scanner:
             self._handle_threat(path, result)
 
         return result
+
+    def _virustotal_needed(self, indicators, result):
+        """Consulta só o que já é suspeito: a API gratuita é limitada."""
+        if not self.settings.virustotal:
+            return False
+        partial = calculate_threat_score(indicators)
+        return VT_MIN_SCORE <= partial < 100
+
+    def _virustotal(self, path, sha256):
+        if sha256 in self._vt_cache:
+            return self._vt_cache[sha256]
+        from alvsafe.core.virustotal import check_virustotal
+
+        try:
+            report = check_virustotal(path)
+        except OSError as e:
+            self.bus.emit("scan.error", f"VirusTotal falhou para {path}: {e}", level=WARNING, path=path)
+            return None
+        detections = report["malicious"] if report else None
+        self._vt_cache[sha256] = detections
+        return detections
 
     def _handle_threat(self, path, result):
         with self._lock:

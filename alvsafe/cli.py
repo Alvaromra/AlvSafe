@@ -182,6 +182,23 @@ def cmd_quarantine(args):
     return 0
 
 
+def cmd_hash(args):
+    """Imprime o SHA-256 no formato do arquivo de assinaturas."""
+    from alvsafe.core.virustotal import sha256_of
+
+    code = 0
+    for target in args.paths:
+        path = Path(target).expanduser()
+        try:
+            print(f"{sha256_of(path)}  # {path.name}")
+        except OSError as e:
+            err.print(f"[red]{escape(str(e))}[/red]")
+            code = 2
+    if code == 0 and not args.quiet:
+        console.print(f"[dim]Acrescente ao arquivo de assinaturas: {paths.user_signatures_file()}[/dim]")
+    return code
+
+
 def cmd_logs(args):
     from alvsafe.core.eventlog import recent
 
@@ -260,6 +277,11 @@ def build_parser():
     d = qs.add_parser("delete", help="apaga definitivamente")
     d.add_argument("id")
     p.set_defaults(func=cmd_quarantine)
+
+    p = sub.add_parser("hash", help="SHA-256 de arquivos, no formato do banco de assinaturas")
+    p.add_argument("paths", nargs="+")
+    p.add_argument("-q", "--quiet", action="store_true", help="só os hashes")
+    p.set_defaults(func=cmd_hash)
 
     p = sub.add_parser("logs", help="últimos eventos registrados")
     p.add_argument("-n", type=int, default=20, help="quantidade (padrão: 20)")
