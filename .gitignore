@@ -18,3 +18,9 @@ reports/
 .cache/
 
 node_modules/
+quarantine/
+database/*.db
+*:Zone.Identifier
+.DS_Store
+.vscode/
+.idea/
