@@ -1,27 +1,26 @@
+# Python
 venv/
+.venv/
 __pycache__/
 *.pyc
-
+*.egg-info/
 build/
 dist/
+.pytest_cache/
 
+# Dados locais (o AlvSafe grava fora do repositório, mas por garantia)
+quarantine/
+*.db
+*.sqlite3
+*.log
 logs/
 reports/
 
-*.db
-*.sqlite3
-
+# Segredos
 .env
 
-*.log
-
-.cache/
-
-node_modules/
-quarantine/
-database/*.db
-*:Zone.Identifier
+# Sistema e editores
 .DS_Store
+*:Zone.Identifier
 .vscode/
 .idea/
-.pytest_cache/

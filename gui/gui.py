@@ -1,6 +1,5 @@
 import sys
 import time
-import os
 
 from pathlib import Path
 
@@ -16,43 +15,25 @@ from threading import Thread
 
 from datetime import datetime
 
-from engine.scanner import (
-    AntivirusScanner
+from alvsafe import system
+from alvsafe.core.network import monitor_connections, monitor_web
+from alvsafe.core.processes import monitor_processes
+from alvsafe.core.quarantine import Quarantine
+from alvsafe.core.realtime import start_realtime_protection
+from alvsafe.core.scanner import Scanner
+from alvsafe.events import bus
+from alvsafe.paths import log_db
+
+from gui.tray import run_tray
+from gui.dashboard import open_dashboard
+
+# Notificações do sistema para ameaças e alertas
+bus.subscribe(
+    lambda e: system.notify("AlvSafe", e.message)
+    if e.kind in ("threat", "alert") else None
 )
 
-from engine.realtime import (
-    start_realtime_protection
-)
-
-from engine.process_monitor import (
-    monitor_processes
-)
-
-from engine.firewall import (
-    monitor_connections
-)
-
-from engine.logger import (
-    DB_PATH
-)
-
-from gui.tray import (
-    run_tray
-)
-
-from gui.dashboard import (
-    open_dashboard
-)
-
-from engine.ransomware_guard import (
-    start_ransomware_protection
-)
-
-from engine.web_protection import (
-    monitor_web
-)
-
-scanner = AntivirusScanner()
+scanner = Scanner()
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -279,7 +260,7 @@ def run_scan(folder):
         f"Escaneando: {folder}"
     )
 
-    scanner.scan_directory(
+    scanner.scan_path(
         folder
     )
 
@@ -393,19 +374,9 @@ def protection_status():
 
 def open_quarantine():
 
-    quarantine_path = (
-        ROOT_DIR / "quarantine"
-    )
+    entries = Quarantine().list()
 
-    quarantine_path.mkdir(
-        exist_ok=True
-    )
-
-    files = list(
-        quarantine_path.glob("*")
-    )
-
-    if not files:
+    if not entries:
 
         content = (
             "Nenhum arquivo "
@@ -415,7 +386,7 @@ def open_quarantine():
     else:
 
         content = "\n".join(
-            f.name for f in files
+            f"{e.id}  {e.original_path}" for e in entries
         )
 
     create_popup(
@@ -455,7 +426,7 @@ def open_logs():
     try:
 
         conn = sqlite3.connect(
-            DB_PATH
+            log_db()
         )
 
         cursor = conn.cursor()
@@ -671,20 +642,6 @@ app.protocol(
     'WM_DELETE_WINDOW',
     minimize_to_tray
 )
-
-def ransomware_worker():
-
-    log(
-        'Proteção ransomware iniciada'
-    )
-
-    start_ransomware_protection()
-
-
-Thread(
-    target=ransomware_worker,
-    daemon=True
-).start()
 
 def web_worker():
 

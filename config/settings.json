@@ -1,8 +1,0 @@
-{
-    "max_file_size_mb": 50,
-    "real_time_protection": true,
-    "heuristic_detection": true,
-    "yara_detection": true,
-    "virustotal": false,
-    "quarantine_enabled": true
-}

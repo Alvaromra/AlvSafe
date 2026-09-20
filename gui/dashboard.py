@@ -1,6 +1,5 @@
 import sqlite3
 
-from pathlib import Path
 
 import matplotlib.pyplot as plt
 
@@ -14,13 +13,7 @@ import customtkinter as ctk
 # DATABASE
 # ============================================
 
-BASE_DIR = Path.home() / "ALVSafe"
-
-DB_PATH = (
-    BASE_DIR /
-    "database" /
-    "logs.db"
-)
+from alvsafe.paths import log_db
 
 # ============================================
 # LOAD DATA
@@ -28,7 +21,7 @@ DB_PATH = (
 
 def load_stats():
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(log_db())
 
     cursor = conn.cursor()
 
