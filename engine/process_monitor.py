@@ -1,41 +1,43 @@
-# ============================================
-# engine/process_monitor.py
-# ============================================
+"""Monitor de processos: apenas alerta, nunca encerra processos.
+
+Encerrar processos pelo nome é perigoso: qualquer software legítimo
+com um nome parecido seria morto. A decisão fica com o usuário.
+"""
+
+from pathlib import Path
 
 import psutil
 
-SUSPICIOUS_NAMES = [
-    'mimikatz',
-    'meterpreter',
-    'nc.exe',
-    'malware',
-    'trojan'
-]
+from engine.alerts import alert
+
+# Comparação exata com o nome do executável (sem extensão),
+# para não pegar por engano coisas como "Malwarebytes" ou "VeraCrypt".
+SUSPICIOUS_NAMES = {
+    "mimikatz",
+    "meterpreter",
+    "nc",
+    "ncat",
+}
 
 
 def monitor_processes():
+    """Verifica os processos em execução e retorna os suspeitos."""
+    found = []
 
-    for proc in psutil.process_iter(
-        ['pid', 'name']
-    ):
-
+    for proc in psutil.process_iter(["pid", "name"]):
         try:
-
-            process_name = proc.info['name']
-
-            if not process_name:
+            name = proc.info["name"]
+            if not name:
                 continue
 
-            for suspicious in SUSPICIOUS_NAMES:
+            if Path(name).stem.lower() in SUSPICIOUS_NAMES:
+                found.append((proc.info["pid"], name))
+                alert(
+                    "PROCESSO SUSPEITO",
+                    f"{name} (pid {proc.info['pid']})",
+                )
 
-                if suspicious.lower() in process_name.lower():
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
 
-                    print(
-                        f"[KILL] "
-                        f"{process_name}"
-                    )
-
-                    proc.kill()
-
-        except:
-            pass
+    return found

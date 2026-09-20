@@ -1,56 +1,49 @@
+"""Monitor de conexões de saída para portas e redes suspeitas."""
+
+import ipaddress
+
 import psutil
 
-SUSPICIOUS_PORTS = [
-    4444,
-    5555,
-    1337,
-    6666
+from engine.alerts import alert
+
+SUSPICIOUS_PORTS = {4444, 5555, 1337, 6666}
+
+# Redes em notação CIDR. Evite faixas enormes: um prefixo como
+# "185." cobre milhões de endereços legítimos.
+SUSPICIOUS_NETWORKS = [
+    ipaddress.ip_network("192.168.56.0/24"),
 ]
 
-SUSPICIOUS_IPS = [
-    '45.9.',
-    '185.',
-    '192.168.56.'
-]
+
+def _is_suspicious_ip(ip):
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return any(addr in net for net in SUSPICIOUS_NETWORKS)
 
 
 def monitor_web():
+    """Retorna as conexões remotas suspeitas (ip, porta)."""
+    try:
+        connections = psutil.net_connections()
+    except psutil.AccessDenied:
+        alert("WEB", "Sem permissão para listar conexões (rode como admin)")
+        return []
 
-    connections = psutil.net_connections()
+    found = []
 
     for conn in connections:
+        if not conn.raddr:
+            continue
 
-        try:
+        ip, port = conn.raddr.ip, conn.raddr.port
 
-            if conn.raddr:
+        if port in SUSPICIOUS_PORTS:
+            found.append((ip, port))
+            alert("WEB", f"porta remota suspeita {ip}:{port} (pid {conn.pid})")
+        elif _is_suspicious_ip(ip):
+            found.append((ip, port))
+            alert("WEB", f"IP suspeito {ip}:{port} (pid {conn.pid})")
 
-                ip = conn.raddr.ip
-
-                port = conn.raddr.port
-
-                # ====================================
-                # PORT
-                # ====================================
-
-                if port in SUSPICIOUS_PORTS:
-
-                    print(
-                        '[WEB] '
-                        f'Porta suspeita: {port}'
-                    )
-
-                # ====================================
-                # IP
-                # ====================================
-
-                for suspicious in SUSPICIOUS_IPS:
-
-                    if suspicious in ip:
-
-                        print(
-                            '[WEB] '
-                            f'IP suspeito: {ip}'
-                        )
-
-        except:
-            pass
+    return found

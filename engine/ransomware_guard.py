@@ -1,171 +1,86 @@
-from watchdog.observers import Observer
+"""Detecção de comportamento típico de ransomware.
 
-from watchdog.events import (
-    FileSystemEventHandler
-)
+Sinais: muitas escritas em pouco tempo, ou arquivos com extensões
+usadas por ransomware. Só alerta; não encerra processos.
+"""
 
+import threading
+import time
+from collections import deque
 from pathlib import Path
 
-import time
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
-import psutil
+from engine.alerts import alert
 
-SUSPICIOUS_EXTENSIONS = [
-    '.locked',
-    '.encrypted',
-    '.crypt',
-    '.enc',
-    '.crypto'
+SUSPICIOUS_EXTENSIONS = {".locked", ".encrypted", ".crypt", ".enc", ".crypto"}
+
+THRESHOLD = 15      # eventos
+TIME_WINDOW = 10    # segundos
+
+WATCH_FOLDERS = [
+    Path.home() / "Documents",
+    Path.home() / "Desktop",
+    Path.home() / "Downloads",
 ]
 
-EVENT_COUNTER = {}
+# Janela deslizante de timestamps: memória limitada, ao contrário
+# de um dicionário que cresce com cada caminho já visto.
+_events = deque()
+_lock = threading.Lock()
 
-THRESHOLD = 15
 
-TIME_WINDOW = 10
+def process_event(path, now=None):
+    """Registra um evento de arquivo. Retorna True se gerou alerta."""
+    now = time.monotonic() if now is None else now
+    alerted = False
 
+    with _lock:
+        _events.append(now)
+        while _events and now - _events[0] > TIME_WINDOW:
+            _events.popleft()
+        burst = len(_events)
 
-class RansomwareHandler(
-    FileSystemEventHandler
-):
-
-    def on_modified(
-        self,
-        event
-    ):
-
-        if event.is_directory:
-            return
-
-        process_event(
-            event.src_path
+    if burst > THRESHOLD:
+        alerted |= alert(
+            "RANSOMWARE",
+            f"{burst} modificações em {TIME_WINDOW}s nas pastas monitoradas",
+            key="burst",
         )
 
-    def on_created(
-        self,
-        event
-    ):
+    if Path(path).suffix.lower() in SUSPICIOUS_EXTENSIONS:
+        alerted |= alert("RANSOMWARE", f"extensão suspeita: {path}")
 
-        if event.is_directory:
-            return
-
-        process_event(
-            event.src_path
-        )
+    return alerted
 
 
-def process_event(path):
+class RansomwareHandler(FileSystemEventHandler):
 
-    now = time.time()
+    def on_modified(self, event):
+        if not event.is_directory:
+            process_event(event.src_path)
 
-    EVENT_COUNTER[path] = now
-
-    recent_events = [
-
-        t for t in EVENT_COUNTER.values()
-
-        if now - t < TIME_WINDOW
-    ]
-
-    if len(recent_events) > THRESHOLD:
-
-        print(
-            '[RANSOMWARE] '
-            'Atividade suspeita detectada'
-        )
-
-        kill_suspicious_processes()
-
-    ext = Path(path).suffix.lower()
-
-    if ext in SUSPICIOUS_EXTENSIONS:
-
-        print(
-            '[RANSOMWARE] '
-            f'Extensão suspeita: {path}'
-        )
-
-        kill_suspicious_processes()
-
-
-def kill_suspicious_processes():
-
-    SUSPICIOUS_NAMES = [
-
-        'encrypt',
-        'locker',
-        'crypt',
-        'wannacry',
-        'ransom'
-    ]
-
-    for proc in psutil.process_iter(
-        ['pid', 'name']
-    ):
-
-        try:
-
-            name = proc.info['name']
-
-            if not name:
-                continue
-
-            for suspicious in SUSPICIOUS_NAMES:
-
-                if suspicious.lower() in name.lower():
-
-                    print(
-                        '[KILL] '
-                        f'{name}'
-                    )
-
-                    proc.kill()
-
-        except:
-            pass
+    def on_created(self, event):
+        if not event.is_directory:
+            process_event(event.src_path)
 
 
 def start_ransomware_protection():
-
     observer = Observer()
-
     handler = RansomwareHandler()
 
-    WATCH_FOLDERS = [
-
-        str(Path.home() / 'Documents'),
-
-        str(Path.home() / 'Desktop'),
-
-        str(Path.home() / 'Downloads')
-    ]
-
     for folder in WATCH_FOLDERS:
-
-        path = Path(folder)
-
-        if path.exists():
-
-            observer.schedule(
-                handler,
-                folder,
-                recursive=True
-            )
-
-            print(
-                '[RANSOMWARE] '
-                f'Monitorando {folder}'
-            )
+        if folder.exists():
+            observer.schedule(handler, str(folder), recursive=True)
+            print(f"[RANSOMWARE] Monitorando {folder}")
 
     observer.start()
 
     try:
-
         while True:
             time.sleep(1)
-
     except KeyboardInterrupt:
-
         observer.stop()
 
     observer.join()
