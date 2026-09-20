@@ -1,5 +1,7 @@
 # AlvSafe
 
+[![CI](https://github.com/Alvaromra/AlvSafe/actions/workflows/ci.yml/badge.svg)](https://github.com/Alvaromra/AlvSafe/actions/workflows/ci.yml)
+
 Antivírus e proteção de endpoint em Python, com linha de comando e interface gráfica.
 
 Projeto educacional e de pesquisa em segurança defensiva. Não substitui um antivírus comercial.
@@ -103,6 +105,28 @@ No macOS, o monitor de conexões exige administrador (`sudo`), e o terminal pode
 
 A variável `ALVSAFE_HOME` redireciona tudo para outra pasta. Hashes extras vão em `malware_hashes.txt` e regras extras em `rules/*.yar`, dentro da pasta de dados.
 
+## Proteção em segundo plano
+
+Para a proteção subir sozinha e continuar rodando sem terminal aberto:
+
+```bash
+alvsafe service install     # LaunchAgent no macOS, systemd de usuário no Linux
+alvsafe service status
+alvsafe service logs -n 50
+alvsafe service stop
+alvsafe service uninstall
+```
+
+É serviço de **usuário**, não de sistema: nada roda como root, e ele enxerga a sessão gráfica, o que as notificações exigem. O serviço executa `alvsafe watch --notify`, gravando em `service.log` na pasta de dados, com rotação a cada 5 MB.
+
+No Linux, para o serviço continuar rodando mesmo sem sessão aberta:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+Se você usa o VirusTotal, lembre que a variável `VT_API_KEY` do seu shell não chega ao serviço. Coloque-a no arquivo da unidade (`Environment=` no systemd, `EnvironmentVariables` no plist), cujo caminho o `alvsafe service status` mostra.
+
 ## Interface gráfica
 
 ```bash
@@ -125,15 +149,19 @@ Não há ícone na bandeja. O `pystray` exige a thread principal no macOS, a mes
 ## Desenvolvimento
 
 ```bash
-pip install -e ".[yara,dev]"
+pip install -e ".[yara,gui,dev]"
 pytest
+ruff check .
 ```
+
+O CI roda os testes em Ubuntu e macOS, com Python 3.11 e 3.13, mais um job com display virtual para a interface gráfica e outro de lint.
 
 Os testes usam uma pasta de dados temporária e montam o arquivo de teste EICAR em tempo de execução, sem nenhum arquivo malicioso no repositório.
 
 ```
 alvsafe/
 ├── cli.py          linha de comando
+├── service.py      launchd (macOS) e systemd (Linux)
 ├── doctor.py       diagnóstico do ambiente
 ├── config.py       settings.json com valores padrão
 ├── paths.py        pastas de dados por sistema
@@ -147,7 +175,6 @@ tests/
 
 ## Roadmap
 
-- Serviço em segundo plano (systemd e LaunchAgent) e CI em Linux e macOS
 - Suporte a Windows
 
 ## Autor

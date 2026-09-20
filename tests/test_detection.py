@@ -6,7 +6,7 @@ import pytest
 
 from alvsafe import paths
 from alvsafe.config import Settings
-from alvsafe.core import heuristic, scanner as scanner_mod, signatures
+from alvsafe.core import heuristic, signatures
 from alvsafe.core.scanner import Scanner
 from alvsafe.core.threat_score import calculate_threat_score, classify_score
 
@@ -97,7 +97,8 @@ def test_pasta_temporaria_pontua(tmp_path):
 
 
 def test_duas_palavras_fortes_ja_bastam(tmp_path):
-    result = scan(tmp_path, "a.ps1", b"Invoke-Expression (DownloadString)", settings=Settings(yara_detection=False))
+    result = scan(tmp_path, "a.ps1", b"Invoke-Expression (DownloadString)",
+                  settings=Settings(yara_detection=False))
     assert result.score == 60 and result.is_threat
 
 
@@ -108,7 +109,8 @@ def test_powershell_ofuscado(tmp_path):
 
 
 def test_script_utf16_do_windows(tmp_path):
-    result = scan(tmp_path, "a.ps1", "Invoke-Expression (New-Object Net.WebClient).DownloadString('x')".encode("utf-16"))
+    script = "Invoke-Expression (New-Object Net.WebClient).DownloadString('x')".encode("utf-16")
+    result = scan(tmp_path, "a.ps1", script)
     assert result.is_threat
 
 

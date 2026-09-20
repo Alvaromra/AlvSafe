@@ -33,7 +33,8 @@ def test_hash_conhecido_vai_para_quarentena(tmp_path, bus):
     assert "hash conhecido" in threat.reasons
     assert threat.quarantine_id and not alvo.exists()
     kinds = [e.kind for e in bus.events]
-    assert kinds[0] == "scan.start" and "threat" in kinds and "quarantine" in kinds and kinds[-1] == "scan.done"
+    assert kinds[0] == "scan.start" and kinds[-1] == "scan.done"
+    assert "threat" in kinds and "quarantine" in kinds
 
 
 def test_no_quarantine_so_relata(tmp_path, bus):
@@ -50,7 +51,8 @@ def test_filtros_extensao_tamanho_e_pastas_excluidas(tmp_path, bus):
     make(tmp_path, "grande.sh", b"x" * (2 * 1024 * 1024))
     make(tmp_path, "node_modules/pacote/b.sh")
     make(tmp_path, ".git/hooks/c.sh")
-    make(tmp_path, "cache_de_projeto/d.sh")  # antes era excluído por conter "cache"
+    # a pasta abaixo era excluída antes só por conter "cache" no nome
+    make(tmp_path, "cache_de_projeto/d.sh")
 
     settings = Settings(max_file_size_mb=1)
     summary = Scanner(settings, bus=bus, signatures=set()).scan_path(tmp_path)

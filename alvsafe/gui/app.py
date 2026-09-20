@@ -242,7 +242,8 @@ class AlvSafeApp(ctk.CTk):
             self.controller.start_protection()
             pastas = len(self.controller.watcher.watching) if self.controller.watcher else 0
             if pastas:
-                self.status_label.configure(text=f"ativa ({pastas} pasta" + ("s)" if pastas > 1 else ")"), text_color="#4cc38a")
+                plural = "s" if pastas > 1 else ""
+                self.status_label.configure(text=f"ativa ({pastas} pasta{plural})", text_color="#4cc38a")
             else:
                 self.status_label.configure(text="nenhuma pasta acessível", text_color="#ff5c5c")
         else:

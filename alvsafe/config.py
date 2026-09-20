@@ -73,7 +73,10 @@ def load_settings(path=None):
         if key not in known:
             continue  # chaves desconhecidas são ignoradas
         default = getattr(settings, key)
-        if not isinstance(value, type(default)) or (isinstance(default, int) and isinstance(value, bool) and not isinstance(default, bool)):
+        # bool é subclasse de int: 1 não vale por True nem o contrário
+        trocou_bool_por_int = (isinstance(default, int) and not isinstance(default, bool)
+                               and isinstance(value, bool))
+        if not isinstance(value, type(default)) or trocou_bool_por_int:
             raise ConfigError(f"{path}: '{key}' deveria ser {type(default).__name__}")
         setattr(settings, key, value)
 

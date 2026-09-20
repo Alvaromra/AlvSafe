@@ -40,6 +40,31 @@ def _printer(verbose):
     return show
 
 
+class _FileLogger:
+    """Escreve os eventos num arquivo, com rotação simples por tamanho."""
+
+    def __init__(self, path, max_bytes=5 * 1024 * 1024):
+        self.path = Path(path).expanduser()
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.max_bytes = max_bytes
+
+    def __call__(self, event):
+        if event.level == DEBUG:
+            return
+        self._rotate()   # antes de escrever, para o arquivo atual nunca sumir
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(event.timestamp))
+        tag = event.data.get("category") or event.kind
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write(f"{stamp} [{tag}] {event.message}\n")
+
+    def _rotate(self):
+        try:
+            if self.path.stat().st_size > self.max_bytes:
+                self.path.replace(self.path.with_suffix(self.path.suffix + ".1"))
+        except OSError:
+            pass
+
+
 def _notifier(event):
     if event.kind == "threat" or (event.kind == "alert" and event.level in (WARNING, CRITICAL)):
         system.notify("AlvSafe", event.message)
@@ -112,6 +137,9 @@ def cmd_watch(args):
     bus.subscribe(_printer(args.verbose))
     if args.notify:
         bus.subscribe(_notifier)
+
+    if args.log:
+        bus.subscribe(_FileLogger(args.log))
 
     watcher = Watcher(settings, bus=bus, folders=args.folder or None)
     watcher.start()
@@ -227,6 +255,50 @@ def cmd_doctor(args):
     return 1 if any(c.status == FAIL for c in checks) else 0
 
 
+def cmd_service(args):
+    from alvsafe.service import ServiceError, get_manager
+
+    manager = get_manager()
+    if manager is None:
+        err.print(f"[red]Sem suporte a serviço em {system.os_name()}.[/red] "
+                  "Use `alvsafe watch` em segundo plano.")
+        return 2
+
+    try:
+        if args.action == "install":
+            unit = manager.install()
+            console.print(f"Serviço instalado ({manager.name}): {unit}")
+            console.print(f"[dim]Log: {manager.log_file}[/dim]")
+            if system.os_name() == "linux":
+                console.print("[dim]Para rodar sem sessão aberta: "
+                              "loginctl enable-linger $USER[/dim]")
+        elif args.action == "uninstall":
+            manager.uninstall()
+            console.print("Serviço removido.")
+        elif args.action == "start":
+            manager.start()
+            console.print("Serviço iniciado.")
+        elif args.action == "stop":
+            manager.stop()
+            console.print("Serviço parado.")
+        elif args.action == "status":
+            ativo, detalhe = manager.status()
+            cor = "green" if ativo else "yellow"
+            console.print(f"{manager.name}: [{cor}]{escape(detalhe)}[/{cor}]")
+            console.print(f"[dim]Unidade: {manager.unit_path}[/dim]")
+            return 0 if ativo else 1
+        elif args.action == "logs":
+            linhas = manager.logs(args.n)
+            console.print("\n".join(escape(linha) for linha in linhas) or "Sem registros do serviço.")
+    except ServiceError as e:
+        err.print(f"[red]{escape(str(e))}[/red]")
+        return 2
+    except OSError as e:
+        err.print(f"[red]{escape(str(e))}[/red]")
+        return 2
+    return 0
+
+
 def cmd_config(args):
     path = Path(args.config) if args.config else paths.config_file()
     if args.action == "path":
@@ -264,6 +336,7 @@ def build_parser():
     p.add_argument("--network", action="store_true", help="também monitora conexões")
     p.add_argument("--interval", type=float, default=10, help="segundos entre checagens de processos/rede")
     p.add_argument("--notify", action="store_true", help="notificações do sistema")
+    p.add_argument("--log", help="também grava os eventos neste arquivo (rotaciona em 5 MB)")
     p.add_argument("-v", "--verbose", action="store_true")
     p.set_defaults(func=cmd_watch)
 
@@ -289,6 +362,11 @@ def build_parser():
 
     p = sub.add_parser("doctor", help="diagnóstico do ambiente")
     p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("service", help="proteção em segundo plano (launchd/systemd)")
+    p.add_argument("action", choices=["install", "uninstall", "start", "stop", "status", "logs"])
+    p.add_argument("-n", type=int, default=30, help="linhas em `service logs`")
+    p.set_defaults(func=cmd_service)
 
     p = sub.add_parser("config", help="configuração")
     p.add_argument("action", choices=["show", "path", "init"])
