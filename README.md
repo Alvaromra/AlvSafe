@@ -129,6 +129,8 @@ Se você usa o VirusTotal, lembre que a variável `VT_API_KEY` do seu shell não
 
 ## Interface gráfica
 
+![Painel do AlvSafe](docs/painel.png)
+
 ```bash
 pip install -e ".[yara,gui]"
 alvsafe-gui
@@ -140,11 +142,17 @@ No macOS, o Tkinter não vem com o Python do Homebrew:
 brew install python-tk@3.13
 ```
 
-A janela tem abas de atividade, quarentena (com restaurar e apagar), logs, diagnóstico e configurações, além de um interruptor para a proteção em tempo real. Opções: `--scan PASTA` já abre escaneando, `--no-notify` desliga as notificações e `--theme dark|light|system` escolhe o tema.
+A janela tem navegação fixa à esquerda e cinco telas. O painel responde primeiro à pergunta que importa, se a máquina está protegida agora, e traz as ações de verificação, a atividade em tempo real e os números do scan. As outras telas são quarentena (restaurar ou apagar por arquivo), registro, diagnóstico e ajustes.
+
+A cor carrega significado, e não enfeite: verde é proteção ativa, âmbar é aviso, vermelho é ameaça. O tema acompanha o sistema e pode ser forçado com `--theme dark|light`.
+
+Atalhos: `Cmd/Ctrl+O` escolhe pasta para escanear, `Cmd/Ctrl+1` a `5` trocam de tela, `Cmd/Ctrl+R` atualiza a tela atual e `Esc` cancela o scan em andamento. Outras opções: `--scan PASTA` já abre escaneando e `--no-notify` desliga as notificações.
+
+![Quarentena](docs/quarentena.png)
 
 Ela usa o mesmo núcleo da CLI. Como o Tkinter só aceita mudanças de tela na thread principal, o scanner e o monitor rodam em threads e se comunicam com a janela por uma fila, lida a cada 200 ms.
 
-Não há ícone na bandeja. O `pystray` exige a thread principal no macOS, a mesma que o Tkinter ocupa, e os dois não coexistem. Como as notificações do sistema já cobrem o aviso em segundo plano, preferi não ter uma funcionalidade que só funcionaria no Linux. Para deixar a proteção rodando sem janela, use `alvsafe watch --notify`, que na parte 6 vira serviço.
+Não há ícone na bandeja. O `pystray` exige a thread principal no macOS, a mesma que o Tkinter ocupa, e os dois não coexistem. Como as notificações do sistema já cobrem o aviso em segundo plano, preferi não ter uma funcionalidade que só funcionaria no Linux. Para proteção sem janela aberta, use o serviço.
 
 ## Desenvolvimento
 
@@ -153,6 +161,8 @@ pip install -e ".[yara,gui,dev]"
 pytest
 ruff check .
 ```
+
+Os testes que abrem a janela de verdade rodam no Linux com display. No macOS eles ficam desligados por padrão: cada um cria a sua raiz Tk, e abrir várias em série no mesmo processo derruba o interpretador no Aqua. Para forçar, `ALVSAFE_GUI_TESTS=1 pytest`, de preferência com `-k janela` para rodar um de cada vez.
 
 O CI roda os testes em Ubuntu e macOS, com Python 3.11 e 3.13, mais um job com display virtual para a interface gráfica e outro de lint.
 
@@ -168,7 +178,8 @@ alvsafe/
 ├── system.py       diferenças entre sistemas (notificações, pastas padrão)
 ├── events.py       barramento de eventos entre núcleo e interfaces
 ├── core/           scanner, quarentena, tempo real, monitores, log
-├── gui/            interface gráfica (controller.py faz a ponte com o núcleo)
+├── gui/            interface gráfica: controller.py (ponte com o núcleo),
+│                  views.py (telas), theme.py (paleta e tipografia)
 └── data/           assinaturas e regras YARA do pacote
 tests/
 ```

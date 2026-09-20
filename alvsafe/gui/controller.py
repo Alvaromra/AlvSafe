@@ -10,6 +10,7 @@ Nada aqui importa Tkinter, o que também torna a lógica testável sem tela.
 
 import queue
 import threading
+import time
 
 from alvsafe import system
 from alvsafe.config import load_settings
@@ -42,6 +43,9 @@ class Controller:
         self._lock = threading.Lock()
         self.scanned = 0
         self.threats = 0
+        self.total = 0            # arquivos a analisar no scan atual (0 = contando)
+        self.current = ""         # último arquivo analisado
+        self.scan_started = None
 
         self.bus.subscribe(self._on_event)
 
@@ -51,6 +55,7 @@ class Controller:
         if event.kind == "scan.file":
             with self._lock:
                 self.scanned += 1
+                self.current = event.path or ""
         elif event.kind == "threat":
             with self._lock:
                 self.threats += 1
@@ -96,6 +101,13 @@ class Controller:
 
         def run():
             try:
+                # Contagem prévia: uma passada sem stat, só para a barra
+                # de progresso saber o tamanho do trabalho.
+                extensions = self.settings.extensions
+                total = sum(1 for p in self.scanner.iter_files(path)
+                            if p.suffix.lower() in extensions)
+                with self._lock:
+                    self.total = total
                 summary = self.scanner.scan_path(path)
             except (OSError, ValueError) as e:
                 self.bus.emit("scan.error", str(e), level=WARNING, path=path)
@@ -105,6 +117,9 @@ class Controller:
         with self._lock:
             self.scanned = 0
             self.threats = 0
+            self.total = 0
+            self.current = ""
+            self.scan_started = time.monotonic()
         self._scan_thread = threading.Thread(target=run, name="alvsafe-gui-scan", daemon=True)
         self._scan_thread.start()
         return True
@@ -144,6 +159,39 @@ class Controller:
 
     def delete(self, entry_id):
         self.quarantine.delete(entry_id)
+
+    @property
+    def progress(self):
+        """(fração concluída, texto) para a barra. Fração None enquanto conta."""
+        with self._lock:
+            scanned, total = self.scanned, self.total
+        if not self.scanning and not scanned:
+            return 0.0, ""
+        if not total:
+            return None, f"{scanned} analisados"
+        return min(scanned / total, 1.0), f"{scanned} de {total}"
+
+    @property
+    def elapsed(self):
+        return 0.0 if self.scan_started is None else time.monotonic() - self.scan_started
+
+    def service_status(self):
+        """(nome do gerenciador, ativo, detalhe) ou None onde não há suporte."""
+        from alvsafe.service import ServiceError, get_manager
+
+        manager = get_manager()
+        if manager is None:
+            return None
+        try:
+            ativo, detalhe = manager.status()
+        except (ServiceError, OSError) as e:
+            return manager.name, False, str(e)
+        return manager.name, ativo, detalhe
+
+    def watched_folders(self):
+        if self.watcher:
+            return list(self.watcher.watching)
+        return []
 
     def recent_logs(self, limit=50):
         return recent(limit)

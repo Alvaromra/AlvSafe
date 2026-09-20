@@ -40,7 +40,10 @@ jobs:
         run: |
           mkdir -p amostras
           printf 'X5O!P%%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > amostras/eicar.sh
-          alvsafe scan --no-quarantine --json amostras | tee resultado.json
+          # O scan sai com código 1 quando acha ameaça, que é o esperado aqui:
+          # sem o `|| true`, o `set -e` do runner derrubaria o passo.
+          alvsafe scan --no-quarantine --json amostras > resultado.json || true
+          cat resultado.json
           python -c "import json,sys; d=json.load(open('resultado.json')); sys.exit(0 if len(d['threats'])==1 else 1)"
 
   gui:
@@ -62,6 +65,8 @@ jobs:
         run: pip install -e ".[yara,gui,dev]"
 
       - name: Testes com display virtual
+        env:
+          ALVSAFE_GUI_TESTS: "1"
         run: xvfb-run -a pytest -q tests/test_gui.py
 
   lint:
